@@ -1,4 +1,6 @@
 telethon
 python-dotenv
-pydantic
+pydantic[timezone]
 pydantic-settings
+pydantic-extra-types
+pendulum

@@ -2,3 +2,5 @@
 .env
 typings
 *.session
+.envrc
+config.toml

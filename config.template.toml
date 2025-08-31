@@ -1,0 +1,22 @@
+# Auth section
+[auth]
+api_id = 12345
+api_hash = "your_api_hash"
+phone_number = "+1234567890"
+
+# Time settings
+[time_settings]
+start_of_day = "10:00:00"
+nonworking_weekdays = ["Sat", "Sun"]
+
+# Working weekends (specific dates or date intervals)
+working_weekends = [
+    "2025-11-01",
+    ["2025-12-25", "2025-12-31"]  # Date interval
+]
+
+# Nonworking weekdays (specific dates or date intervals)
+nonworking_weekdays_dates = [
+    "2025-12-31",
+    ["2026-01-01", "2026-01-07"]  # Date interval
+]
