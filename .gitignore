@@ -4,3 +4,4 @@ typings
 *.session
 .envrc
 config.toml
+*.pyc
