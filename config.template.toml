@@ -7,6 +7,7 @@ phone_number = "+1234567890"
 # Time settings
 [time_settings]
 start_of_day = "10:00:00"
+timezone = "auto"  # Use "auto" for system timezone, or specify like "Europe/London", "America/New_York", etc.
 nonworking_weekdays = ["Sat", "Sun"]
 
 # Working weekends (specific dates or date intervals)
