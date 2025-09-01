@@ -3,7 +3,7 @@ from getpass import getpass
 from telethon import TelegramClient
 from telethon.errors.rpcerrorlist import SessionPasswordNeededError, FloodWaitError
 from telethon.tl.functions.account import UpdateNotifySettingsRequest, GetNotifySettingsRequest
-from telethon.tl.types import InputPeerNotifySettings, InputPeerChannel
+from telethon.tl.types import InputPeerNotifySettings, InputPeerChannel, Chat, InputPeerChat, User
 
 from pydantic_settings import BaseSettings
 from pydantic import Field, BaseModel, field_validator
@@ -75,7 +75,7 @@ class TimeSettings(BaseModel):
     def parse_working_weekends(cls, v: Any) -> List[Union[Date, Tuple[Date, Date]]]:
         if not isinstance(v, list):
             raise ValueError("working_weekends must be a list")
-        
+
         return cls._parse_date_list(v, "working_weekends")
 
     @field_validator('nonworking_weekdays')
@@ -83,13 +83,13 @@ class TimeSettings(BaseModel):
     def parse_nonworking_weekdays(cls, v: Any) -> List[Union[Date, Tuple[Date, Date]]]:
         if not isinstance(v, list):
             raise ValueError("nonworking_weekdays must be a list")
-        
+
         return cls._parse_date_list(v, "nonworking_weekdays")
 
     @classmethod
     def _parse_date_list(cls, v: List[Union[str, List[str]]], field_name: str) -> List[Union[Date, Tuple[Date, Date]]]:
         parsed_dates = []
-        
+
         for item in v:
             if isinstance(item, str):
                 parsed_dates.append(cls._parse_iso_date(item, field_name))
@@ -103,17 +103,17 @@ class TimeSettings(BaseModel):
                 parsed_dates.append((start_date, end_date))
             else:
                 raise ValueError(f"{field_name}: each item must be a string (single date) or list of 2 strings (date interval)")
-        
+
         return parsed_dates
 
     @staticmethod
     def _parse_iso_date(date_str: str, field_name: str) -> Date:
         if not isinstance(date_str, str):
             raise ValueError(f"{field_name}: date must be a string in ISO8601 format (YYYY-MM-DD)")
-        
+
         if not re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
             raise ValueError(f"{field_name}: date '{date_str}' must be in ISO8601 format (YYYY-MM-DD)")
-        
+
         try:
             return pendulum.parse(date_str).date()
         except Exception as e:
@@ -126,7 +126,7 @@ class TimeSettings(BaseModel):
             tz = pendulum.timezone(timezone_setting)
 
         now = pendulum.now(tz)
-        
+
         if now.time() < self.start_of_day:
             starting_day = now.date()
         else:
@@ -135,12 +135,12 @@ class TimeSettings(BaseModel):
         while True:
             weekday = starting_day.weekday()
             is_weekend = weekday in [wd.value for wd in self.weekends]
-            
+
             # Check if this day is marked as nonworking (highest priority)
             if self._is_nonworking_date(starting_day):
                 starting_day = starting_day.add(days=1)
                 continue
-            
+
             if is_weekend:
                 # Weekend, but not nonworking - check if it's a working weekend
                 if self._is_working_date(starting_day):
@@ -217,14 +217,14 @@ async def main():
     now = pendulum.now(tz)
     next_working_day = settings.time_settings.get_next_working_day(timezone_setting)
     start_of_day = settings.time_settings.start_of_day
-    
+
     mute_until = pendulum.datetime(
-        next_working_day.year, 
-        next_working_day.month, 
-        next_working_day.day, 
-        start_of_day.hour, 
-        start_of_day.minute, 
-        start_of_day.second, 
+        next_working_day.year,
+        next_working_day.month,
+        next_working_day.day,
+        start_of_day.hour,
+        start_of_day.minute,
+        start_of_day.second,
         tz=tz
     )
 
@@ -233,11 +233,14 @@ async def main():
 
     # Iterate through all dialogs and mute unmuted groups
     for dialog in all_dialogs:
-        if hasattr(dialog.entity, 'broadcast') and not dialog.entity.broadcast:
-            print(f'Got chat `{dialog.name}`')
+        peer : InputPeer = None
 
+        if isinstance(dialog.entity, Chat):
+            peer = InputPeerChat(dialog.entity.id)
+        elif hasattr(dialog.entity, 'broadcast') and not dialog.entity.broadcast:
             peer = InputPeerChannel(dialog.entity.id, dialog.entity.access_hash)
 
+        if peer is not None:
             # Check if the group is already muted
             notify_settings = await handle_rate_limit(client, GetNotifySettingsRequest(peer=peer))
             is_already_muted = (notify_settings and
@@ -256,7 +259,10 @@ async def main():
                     peer=peer,
                     settings=mute_settings
                 ))
-                print(f"Muted group: {dialog.name}")
+                print(f"Muted chat: {dialog.name}")
+        else:
+            if not isinstance(dialog.entity, User):
+                print(f"Skipped: {dialog.name}, unknown peer type")
 
     # Disconnect from the Telegram API
     await client.disconnect()
