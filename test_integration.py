@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from telethon.errors.rpcerrorlist import FloodWaitError
 from telethon.tl.types import InputPeerNotifySettings, InputPeerChannel
 
-from from_telethon import TimeSettings, Settings, AuthSettings, handle_rate_limit, main
+from telegram_muter import TimeSettings, Settings, AuthSettings, handle_rate_limit, main
 
 
 class TestTelegramIntegration:
@@ -71,8 +71,8 @@ class TestTelegramIntegration:
     async def test_mute_calculation_with_working_days(self, mock_settings):
         """Test that mute_until calculation uses working days algorithm correctly"""
         with patch('pendulum.now') as mock_now, \
-             patch('from_telethon.settings', mock_settings), \
-             patch('from_telethon.TelegramClient') as mock_client_class:
+             patch('telegram_muter.settings', mock_settings), \
+             patch('telegram_muter.TelegramClient') as mock_client_class:
             
             # Mock current time: Thursday 11:00 PM (after start_of_day)
             mock_time = pendulum.parse("2025-09-04T23:00:00")
@@ -109,9 +109,9 @@ class TestTelegramIntegration:
     async def test_mute_unmuted_group(self, mock_settings, mock_dialog):
         """Test muting an unmuted group"""
         with patch('pendulum.now') as mock_now, \
-             patch('from_telethon.settings', mock_settings), \
-             patch('from_telethon.TelegramClient') as mock_client_class, \
-             patch('from_telethon.handle_rate_limit', new_callable=AsyncMock) as mock_handle_rate_limit:
+             patch('telegram_muter.settings', mock_settings), \
+             patch('telegram_muter.TelegramClient') as mock_client_class, \
+             patch('telegram_muter.handle_rate_limit', new_callable=AsyncMock) as mock_handle_rate_limit:
             
             # Mock current time
             mock_time = pendulum.parse("2025-09-04T11:00:00")  # Thursday after start_of_day
@@ -150,9 +150,9 @@ class TestTelegramIntegration:
     async def test_skip_already_muted_group(self, mock_settings, mock_dialog):
         """Test skipping already muted group"""
         with patch('pendulum.now') as mock_now, \
-             patch('from_telethon.settings', mock_settings), \
-             patch('from_telethon.TelegramClient') as mock_client_class, \
-             patch('from_telethon.handle_rate_limit', new_callable=AsyncMock) as mock_handle_rate_limit:
+             patch('telegram_muter.settings', mock_settings), \
+             patch('telegram_muter.TelegramClient') as mock_client_class, \
+             patch('telegram_muter.handle_rate_limit', new_callable=AsyncMock) as mock_handle_rate_limit:
             
             # Mock current time
             mock_time = pendulum.parse("2025-09-04T11:00:00")

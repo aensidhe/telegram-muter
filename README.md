@@ -74,7 +74,7 @@ nonworking_weekdays = [
 
 Запустите приложение:
 ```bash
-python from_telethon.py
+python telegram_muter.py
 ```
 
 При первом запуске вам потребуется:
@@ -104,7 +104,7 @@ pytest test_integration.py -v
 
 ## Структура проекта
 
-- `from_telethon.py` — основной файл приложения
+- `telegram_muter.py` — основной файл приложения
 - `config_tester.py` — утилита для тестирования конфигурации
 - `config.template.toml` — шаблон конфигурации
 - `test_working_days.py` — тесты алгоритма рабочих дней
