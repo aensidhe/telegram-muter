@@ -8,12 +8,26 @@ Telegram Muter is a Python application that connects to the Telegram API and mut
 
 ## Features
 
+- **Multi-schedule system with inheritance**:
+  - Create multiple named schedules
+  - Schedule inheritance from parent schedules with ability to override any properties
+  - Configure different schedules for different groups by exact name or regex pattern matching
+  
 - **Smart next working day calculation** considering:
   - Regular weekend days (Saturday and Sunday by default)
   - Working weekends (e.g., Saturday that should be treated as a working day)
   - Non-working weekdays (e.g., holidays)
   - Time zones
   - Work start time
+  
+- **Support for different chat types**:
+  - Regular groups (Chat)
+  - Supergroups and channels (Channel)
+  - Automatic skipping of private chats
+  
+- **Two operating modes**:
+  - `mute` — mute notifications until next working day (respecting individual group schedules)
+  - `unmute` — unmute chats that were muted until next working day start
   
 - **Support for Russian and English day names**
 - **Telegram API rate limiting handling**
@@ -46,6 +60,8 @@ cp config.template.toml config.toml
 ```
 
 4. Configure `config.toml`:
+
+### Simple Configuration (backward compatible)
 ```toml
 [auth]
 api_id = 12345  # Your API ID from https://my.telegram.org
@@ -55,7 +71,7 @@ phone_number = "+1234567890"  # Your phone number
 [time_settings]
 start_of_day = "10:00:00"  # Work day start time
 timezone = "auto"  # "auto" for system timezone or "Europe/London"
-weekends = ["Sat", "Sun"]  # Weekend days (supported: Mon, Tue, Wed, Thu, Fri, Sat, Sun, Пн, Вт, Ср, Чт, Пт, Сб, Вс)
+weekends = ["Sat", "Sun"]  # Weekend days
 
 # Working weekends (specific dates or date intervals)
 working_weekends = [
@@ -70,16 +86,70 @@ nonworking_weekdays = [
 ]
 ```
 
+### Multi-Schedule Configuration (new feature)
+```toml
+[auth]
+api_id = 12345
+api_hash = "your_api_hash"
+phone_number = "+1234567890"
+
+# Define schedules
+[[schedules]]
+name = "default"          # Required: must have a schedule named "default"
+start_of_day = "10:00:00"
+timezone = "auto"
+weekends = ["Sat", "Sun"]
+
+[[schedules]]
+name = "work"
+parent = "default"        # Inherits from "default"
+start_of_day = "09:00:00" # Override: work starts earlier
+timezone = "UTC"          # Override: use UTC timezone
+
+[[schedules]]
+name = "duty"
+parent = "work"           # Inherits from "work"
+weekends = []             # Override: 24/7 duty, no weekends
+working_weekends = []     # Clear parent's working weekends
+
+# Group-specific settings (bind groups to schedules)
+[[group_settings]]
+name = "Work Team Chat"
+schedule = "work"         # Exact match for group name
+
+[[group_settings]]
+name_pattern = "duty.*"   # Regex pattern for groups starting with "duty"
+schedule = "duty"         # Use "duty" schedule for matching groups
+
+[[group_settings]]
+name_pattern = "weekend.*"
+schedule = "default"      # Weekend groups use default schedule
+```
+
 ## Usage
 
-Run the application:
+### Mute notifications (default mode)
 ```bash
 python telegram_muter.py
+# or explicitly
+python telegram_muter.py mute
+```
+
+### Unmute notifications
+```bash
+python telegram_muter.py unmute
+```
+
+### Help
+```bash
+python telegram_muter.py --help
 ```
 
 On first run you will need to:
 1. Enter verification code from SMS
 2. If needed, enter two-factor authentication password
+
+**Note**: The `unmute` command will only find and unmute chats that were muted until the next working day start by this program. Chats muted for other durations will remain muted.
 
 ## Date and Time Formats
 
@@ -119,7 +189,7 @@ pytest test_integration.py -v
 
 ## License
 
-MIT License
+Unlicense (public domain) — see [LICENSE](LICENSE) file
 
 ## Support
 

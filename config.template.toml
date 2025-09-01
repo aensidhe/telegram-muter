@@ -4,7 +4,10 @@ api_id = 12345
 api_hash = "your_api_hash"
 phone_number = "+1234567890"
 
-# Time settings
+# ============================================================================
+# LEGACY SINGLE SCHEDULE CONFIGURATION (backward compatible)
+# ============================================================================
+# You can still use the old format with a single schedule:
 [time_settings]
 start_of_day = "10:00:00"
 timezone = "auto"  # Use "auto" for system timezone, or specify like "Europe/London", "America/New_York", etc.
@@ -21,4 +24,43 @@ nonworking_weekdays = [
     "2025-12-31",
     ["2026-01-01", "2026-01-07"]  # Date interval
 ]
+
+# ============================================================================
+# MULTI-SCHEDULE CONFIGURATION (new feature)
+# ============================================================================
+# Instead of time_settings above, you can define multiple schedules with inheritance:
+
+# Define schedules (comment out time_settings above if using this)
+# [[schedules]]
+# name = "default"          # Required: must have a schedule named "default"
+# start_of_day = "10:00:00"
+# timezone = "auto"
+# weekends = ["Sat", "Sun"]
+# working_weekends = ["2025-12-25"]
+# nonworking_weekdays = ["2025-01-01"]
+
+# [[schedules]]
+# name = "work"
+# parent = "default"        # Inherits from default, can override any properties
+# start_of_day = "09:00:00" # Override: work starts earlier
+# timezone = "UTC"          # Override: use UTC timezone
+
+# [[schedules]]
+# name = "duty"
+# parent = "work"           # Inherits from work schedule
+# weekends = []             # Override: no weekends (24/7 duty)
+# working_weekends = []     # Clear parent's working weekends
+
+# Group-specific settings (optional, works with both legacy and multi-schedule)
+# [[group_settings]]
+# name = "Work Team Chat"
+# schedule = "work"         # Use the "work" schedule for this exact group name
+
+# [[group_settings]]
+# name_pattern = "duty.*"   # Regex pattern to match group names starting with "duty"
+# schedule = "duty"         # Use the "duty" schedule for matching groups
+
+# [[group_settings]]
+# name_pattern = "weekend.*"
+# schedule = "default"      # Use default schedule for weekend groups
 
