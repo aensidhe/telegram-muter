@@ -1,9 +1,8 @@
 import asyncio
-from datetime import datetime, timedelta
 from getpass import getpass
 from telethon import TelegramClient
 from telethon.errors.rpcerrorlist import SessionPasswordNeededError, FloodWaitError
-from telethon.tl.functions.account import UpdateNotifySettingsRequest
+from telethon.tl.functions.account import UpdateNotifySettingsRequest, GetNotifySettingsRequest
 from telethon.tl.types import InputPeerNotifySettings, InputPeerChannel
 
 from pydantic_settings import BaseSettings
@@ -74,6 +73,15 @@ def load_settings_from_toml(file_path: str) -> Settings:
 
 settings = load_settings_from_toml("config.toml")
 
+async def handle_rate_limit(operation, *args, **kwargs):
+    """Common handler for Telegram rate limiting using FloodWaitError"""
+    while True:
+        try:
+            return await operation(*args, **kwargs)
+        except FloodWaitError as e:
+            print(f"Rate limited by Telegram. Waiting {e.seconds} seconds...")
+            await asyncio.sleep(e.seconds)
+
 async def main():
     # Connect to the Telegram API
     client = TelegramClient('ru.aensidhe.console_groups_muter', settings.auth.api_id, settings.auth.api_hash)
@@ -98,48 +106,41 @@ async def main():
 
     now = pendulum.now(tz)
     start_of_day = settings.time_settings.start_of_day
-    mute_until = now.replace(hour=start_of_day.hour, minute=start_of_day.minute, second=start_of_day.second, microsecond=0).add(days=1)
+    mute_until = now.replace(hour=start_of_day.hour, minute=start_of_day.minute, second=start_of_day.second, microsecond=0)
+    if mute_until < now:
+        mute_until = mute_until.add(days=1)
 
     # Fetch all dialogs with pagination
-    while True:
-        try:
-            all_dialogs = await client.get_dialogs(limit=None) # type: ignore
-            break
-        except FloodWaitError as e:
-            print(f"Rate limited by Telegram. Waiting {e.seconds} seconds...")
-            await asyncio.sleep(e.seconds)
+    all_dialogs = await handle_rate_limit(client.get_dialogs, limit=None)
 
     # Iterate through all dialogs and mute unmuted groups
-    for dialog in all_dialogs: # type: ignore
-        if hasattr(dialog.entity, 'broadcast') and not dialog.entity.broadcast: # type: ignore
-            print(f'Got chat `{dialog.name}`') # type: ignore
+    for dialog in all_dialogs:
+        if hasattr(dialog.entity, 'broadcast') and not dialog.entity.broadcast:
+            print(f'Got chat `{dialog.name}`')
+
+            peer = InputPeerChannel(dialog.entity.id, dialog.entity.access_hash)
+
             # Check if the group is already muted
-            notify_settings = dialog.notify_settings if hasattr(dialog, 'notify_settings') else None # type: ignore
+            notify_settings = await handle_rate_limit(client, GetNotifySettingsRequest(peer=peer))
             is_already_muted = (notify_settings and
-                               notify_settings.mute_until and
-                               notify_settings.mute_until > pendulum.now().timestamp()) # type: ignore
+                                notify_settings.mute_until and
+                                notify_settings.mute_until > now)
 
             if is_already_muted:
-                print(f"Skipping already muted chat: {dialog.name}") # type: ignore
+                print(f"Skipping already muted chat: {dialog.name}")
             else:
                 # Mute the group until start_of_day next day
                 mute_settings = InputPeerNotifySettings(
                     mute_until=mute_until,
                     show_previews=False
                 )
-                while True:
-                    try:
-                        await client(UpdateNotifySettingsRequest(
-                            peer=InputPeerChannel(dialog.entity.id, dialog.entity.access_hash), # type: ignore
-                            settings=mute_settings
-                        ))
-                        print(f"Muted group: {dialog.name}") # type: ignore
-                        break
-                    except FloodWaitError as e:
-                        print(f"Rate limited by Telegram while muting {dialog.name}. Waiting {e.seconds} seconds...") # type: ignore
-                        await asyncio.sleep(e.seconds)
+                await handle_rate_limit(client, UpdateNotifySettingsRequest(
+                    peer=peer,
+                    settings=mute_settings
+                ))
+                print(f"Muted group: {dialog.name}")
 
     # Disconnect from the Telegram API
-    await client.disconnect() # type: ignore
+    await client.disconnect()
 
 asyncio.run(main())

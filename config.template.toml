@@ -21,3 +21,4 @@ nonworking_weekdays_dates = [
     "2025-12-31",
     ["2026-01-01", "2026-01-07"]  # Date interval
 ]
+
