@@ -1,4 +1,5 @@
 import asyncio
+import argparse
 from getpass import getpass
 from telethon import TelegramClient
 from telethon.errors.rpcerrorlist import SessionPasswordNeededError, FloodWaitError
@@ -194,7 +195,95 @@ async def handle_rate_limit(operation, *args, **kwargs):
             print(f"Rate limited by Telegram. Waiting {e.seconds} seconds...")
             await asyncio.sleep(e.seconds)
 
-async def main():
+async def get_peer_for_dialog(dialog):
+    """Get appropriate peer type for a dialog"""
+    if isinstance(dialog.entity, Chat):
+        return InputPeerChat(dialog.entity.id)
+    elif hasattr(dialog.entity, 'broadcast') and not dialog.entity.broadcast:
+        return InputPeerChannel(dialog.entity.id, dialog.entity.access_hash)
+    return None
+
+async def unmute_chats():
+    """Unmute all chats that are muted until start_of_day next working day"""
+    print("Starting unmute operation...")
+    
+    # Connect to the Telegram API
+    client = TelegramClient('ru.aensidhe.console_groups_muter', settings.auth.api_id, settings.auth.api_hash)
+    await client.connect()
+
+    # Ensure you're authorized
+    if not await client.is_user_authorized():
+        await client.send_code_request(settings.auth.phone_number)
+        try:
+            await client.sign_in(settings.auth.phone_number, input('Enter the code: '))
+        except SessionPasswordNeededError:
+            await client.sign_in(settings.auth.phone_number, password=getpass('Enter 2FA password: '))
+
+    # Calculate the target mute_until time (start_of_day next working day)
+    timezone_setting = settings.time_settings.timezone
+    if timezone_setting == "auto":
+        tz = pendulum.local_timezone()
+    else:
+        tz = pendulum.timezone(timezone_setting)
+
+    next_working_day = settings.time_settings.get_next_working_day(timezone_setting)
+    start_of_day = settings.time_settings.start_of_day
+
+    target_mute_until = pendulum.datetime(
+        next_working_day.year,
+        next_working_day.month,
+        next_working_day.day,
+        start_of_day.hour,
+        start_of_day.minute,
+        start_of_day.second,
+        tz=tz
+    )
+
+    print(f"Looking for chats muted until: {target_mute_until}")
+
+    # Fetch all dialogs with pagination
+    all_dialogs = await handle_rate_limit(client.get_dialogs, limit=None)
+
+    unmuted_count = 0
+    
+    # Iterate through all dialogs and unmute matching chats
+    for dialog in all_dialogs:
+        peer = await get_peer_for_dialog(dialog)
+
+        if peer is not None:
+            # Check if the group is muted until the target time
+            notify_settings = await handle_rate_limit(client, GetNotifySettingsRequest(peer=peer))
+            
+            if (notify_settings and 
+                notify_settings.mute_until and 
+                notify_settings.mute_until == target_mute_until):
+                
+                # Unmute the chat
+                unmute_settings = InputPeerNotifySettings(
+                    mute_until=None,
+                    show_previews=True
+                )
+                await handle_rate_limit(client, UpdateNotifySettingsRequest(
+                    peer=peer,
+                    settings=unmute_settings
+                ))
+                print(f"Unmuted chat: {dialog.name}")
+                unmuted_count += 1
+            else:
+                print(f"Skipped chat: {dialog.name} (not muted until target time)")
+        else:
+            if not isinstance(dialog.entity, User):
+                print(f"Skipped: {dialog.name}, unknown peer type")
+
+    print(f"Unmute operation completed. Total chats unmuted: {unmuted_count}")
+
+    # Disconnect from the Telegram API
+    await client.disconnect()
+
+async def mute_chats():
+    """Mute all unmuted chats until start_of_day next working day"""
+    print("Starting mute operation...")
+    
     # Connect to the Telegram API
     client = TelegramClient('ru.aensidhe.console_groups_muter', settings.auth.api_id, settings.auth.api_hash)
     await client.connect()
@@ -228,17 +317,16 @@ async def main():
         tz=tz
     )
 
+    print(f"Muting chats until: {mute_until}")
+
     # Fetch all dialogs with pagination
     all_dialogs = await handle_rate_limit(client.get_dialogs, limit=None)
 
+    muted_count = 0
+
     # Iterate through all dialogs and mute unmuted groups
     for dialog in all_dialogs:
-        peer : InputPeer = None
-
-        if isinstance(dialog.entity, Chat):
-            peer = InputPeerChat(dialog.entity.id)
-        elif hasattr(dialog.entity, 'broadcast') and not dialog.entity.broadcast:
-            peer = InputPeerChannel(dialog.entity.id, dialog.entity.access_hash)
+        peer = await get_peer_for_dialog(dialog)
 
         if peer is not None:
             # Check if the group is already muted
@@ -260,12 +348,41 @@ async def main():
                     settings=mute_settings
                 ))
                 print(f"Muted chat: {dialog.name}")
+                muted_count += 1
         else:
             if not isinstance(dialog.entity, User):
                 print(f"Skipped: {dialog.name}, unknown peer type")
 
+    print(f"Mute operation completed. Total chats muted: {muted_count}")
+
     # Disconnect from the Telegram API
     await client.disconnect()
 
+async def main():
+    parser = argparse.ArgumentParser(
+        description="Telegram Muter - Mute/unmute Telegram chats until next working day"
+    )
+    parser.add_argument(
+        "command", 
+        choices=["mute", "unmute"], 
+        nargs="?",
+        default="mute",
+        help="Command to execute (default: mute)"
+    )
+    
+    args = parser.parse_args()
+    
+    if args.command == "mute":
+        await mute_chats()
+    elif args.command == "unmute":
+        await unmute_chats()
+    else:
+        print(f"Unknown command: {args.command}")
+        return 1
+    
+    return 0
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    import sys
+    exit_code = asyncio.run(main())
+    sys.exit(exit_code or 0)
