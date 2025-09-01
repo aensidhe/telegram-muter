@@ -4,3 +4,5 @@ pydantic[timezone]
 pydantic-settings
 pydantic-extra-types
 pendulum
+pytest
+pytest-asyncio
