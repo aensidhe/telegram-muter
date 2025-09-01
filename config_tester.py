@@ -14,9 +14,9 @@ class AuthSettings(BaseModel):
 # Time settings
 class TimeSettings(BaseModel):
     start_of_day: Any = Field()
-    nonworking_weekdays: List[Any] = Field()
+    weekends: List[Any] = Field()
     working_weekends: List[Union[str, List[str]]] = Field()
-    nonworking_weekdays_dates: List[Union[str, List[str]]] = Field()
+    nonworking_weekdays: List[Union[str, List[str]]] = Field()
 
     @field_validator('start_of_day')
     @classmethod
@@ -27,11 +27,11 @@ class TimeSettings(BaseModel):
             return pendulum.parse(v).time()
         raise ValueError(f"Cannot parse {v} as Time")
 
-    @field_validator('nonworking_weekdays')
+    @field_validator('weekends')
     @classmethod
-    def parse_nonworking_weekdays(cls, v: Any) -> List[WeekDay]:
+    def parse_weekends(cls, v: Any) -> List[WeekDay]:
         if not isinstance(v, list):
-            raise ValueError("nonworking_weekdays must be a list")
+            raise ValueError("weekends must be a list")
 
         weekdays = []
         for item in v:
@@ -75,6 +75,6 @@ print(f"API ID: {settings.auth.api_id}")
 print(f"API Hash: {settings.auth.api_hash}")
 print(f"Phone Number: {settings.auth.phone_number}")
 print(f"Start of the day: {settings.time_settings.start_of_day}")
-print(f"Nonworking weekdays: {settings.time_settings.nonworking_weekdays}")
+print(f"Weekends: {settings.time_settings.weekends}")
 print(f"Working weekends: {settings.time_settings.working_weekends}")
-print(f"Nonworking weekdays (specific dates): {settings.time_settings.nonworking_weekdays_dates}")
+print(f"Nonworking weekdays (specific dates): {settings.time_settings.nonworking_weekdays}")

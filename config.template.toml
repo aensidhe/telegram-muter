@@ -8,7 +8,7 @@ phone_number = "+1234567890"
 [time_settings]
 start_of_day = "10:00:00"
 timezone = "auto"  # Use "auto" for system timezone, or specify like "Europe/London", "America/New_York", etc.
-nonworking_weekdays = ["Sat", "Sun"]
+weekends = ["Sat", "Sun"]
 
 # Working weekends (specific dates or date intervals)
 working_weekends = [
@@ -17,7 +17,7 @@ working_weekends = [
 ]
 
 # Nonworking weekdays (specific dates or date intervals)
-nonworking_weekdays_dates = [
+nonworking_weekdays = [
     "2025-12-31",
     ["2026-01-01", "2026-01-07"]  # Date interval
 ]
