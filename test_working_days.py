@@ -175,6 +175,261 @@ class TestScheduleSystem:
         assert effective.start_of_day.hour == 10
 
 
+class TestGetNextWorkingDay:
+    """Test the get_next_working_day method logic"""
+    
+    def test_before_start_of_day_weekday(self):
+        """Test when current time is before start_of_day on a weekday"""
+        # Create schedule with start_of_day at 09:00
+        schedule = Schedule(
+            name="default",
+            start_of_day="09:00:00",
+            timezone="UTC",
+            weekends=["Sat", "Sun"]
+        )
+        
+        # Mock current time to Wednesday 08:00 (before start_of_day)
+        with patch('pendulum.now') as mock_now:
+            # Wednesday, Jan 8, 2025 08:00 UTC
+            mock_now.return_value = pendulum.parse("2025-01-08T08:00:00+00:00")
+            
+            result = schedule.get_next_working_day("UTC")
+            
+            # Should return today (Jan 8, 2025) since it's before start_of_day and it's a weekday
+            expected = Date(2025, 1, 8)
+            assert result == expected
+    
+    def test_after_start_of_day_weekday(self):
+        """Test when current time is after start_of_day on a weekday"""
+        schedule = Schedule(
+            name="default",
+            start_of_day="09:00:00",
+            timezone="UTC",
+            weekends=["Sat", "Sun"]
+        )
+        
+        # Mock current time to Wednesday 10:00 (after start_of_day)
+        with patch('pendulum.now') as mock_now:
+            # Wednesday, Jan 8, 2025 10:00 UTC
+            mock_now.return_value = pendulum.parse("2025-01-08T10:00:00+00:00")
+            
+            result = schedule.get_next_working_day("UTC")
+            
+            # Should return tomorrow (Jan 9, 2025) since it's after start_of_day
+            expected = Date(2025, 1, 9)
+            assert result == expected
+    
+    def test_before_start_of_day_weekend_no_working_weekend(self):
+        """Test when current time is before start_of_day on a weekend with no working weekend"""
+        schedule = Schedule(
+            name="default",
+            start_of_day="09:00:00",
+            timezone="UTC",
+            weekends=["Sat", "Sun"]
+        )
+        
+        # Mock current time to Saturday 08:00 (before start_of_day, weekend)
+        with patch('pendulum.now') as mock_now:
+            # Saturday, Jan 11, 2025 08:00 UTC
+            mock_now.return_value = pendulum.parse("2025-01-11T08:00:00+00:00")
+            
+            result = schedule.get_next_working_day("UTC")
+            
+            # Should return Monday (Jan 13, 2025) since weekend days are skipped
+            expected = Date(2025, 1, 13)
+            assert result == expected
+    
+    def test_weekend_with_working_weekend_date(self):
+        """Test weekend day that is specified as working in working_weekends"""
+        schedule = Schedule(
+            name="default",
+            start_of_day="09:00:00",
+            timezone="UTC",
+            weekends=["Sat", "Sun"],
+            working_weekends=["2025-01-11"]  # Saturday Jan 11
+        )
+        
+        # Mock current time to Saturday 08:00 (before start_of_day, weekend but working)
+        with patch('pendulum.now') as mock_now:
+            # Saturday, Jan 11, 2025 08:00 UTC
+            mock_now.return_value = pendulum.parse("2025-01-11T08:00:00+00:00")
+            
+            result = schedule.get_next_working_day("UTC")
+            
+            # Should return today (Jan 11, 2025) since it's a working weekend
+            expected = Date(2025, 1, 11)
+            assert result == expected
+    
+    def test_weekend_with_working_weekend_range(self):
+        """Test weekend day that is specified as working in a date range"""
+        schedule = Schedule(
+            name="default",
+            start_of_day="09:00:00",
+            timezone="UTC",
+            weekends=["Sat", "Sun"],
+            working_weekends=[["2025-01-10", "2025-01-12"]]  # Range covering the Sunday
+        )
+        
+        # Mock current time to Sunday 08:00 (before start_of_day, weekend but in working range)
+        with patch('pendulum.now') as mock_now:
+            # Sunday, Jan 12, 2025 08:00 UTC
+            mock_now.return_value = pendulum.parse("2025-01-12T08:00:00+00:00")
+            
+            result = schedule.get_next_working_day("UTC")
+            
+            # Should return today (Jan 12, 2025) since it's in the working weekend range
+            expected = Date(2025, 1, 12)
+            assert result == expected
+    
+    def test_weekday_with_nonworking_weekday_date(self):
+        """Test weekday that is specified as nonworking (vacation)"""
+        schedule = Schedule(
+            name="default",
+            start_of_day="09:00:00",
+            timezone="UTC",
+            weekends=["Sat", "Sun"],
+            nonworking_weekdays=["2025-01-08"]  # Wednesday Jan 8
+        )
+        
+        # Mock current time to Wednesday 08:00 (before start_of_day, weekday but nonworking)
+        with patch('pendulum.now') as mock_now:
+            # Wednesday, Jan 8, 2025 08:00 UTC
+            mock_now.return_value = pendulum.parse("2025-01-08T08:00:00+00:00")
+            
+            result = schedule.get_next_working_day("UTC")
+            
+            # Should return Thursday (Jan 9, 2025) since Wednesday is nonworking
+            expected = Date(2025, 1, 9)
+            assert result == expected
+    
+    def test_nonworking_weekday_priority_over_working_weekend(self):
+        """Test that nonworking_weekdays has priority over working_weekends"""
+        schedule = Schedule(
+            name="default",
+            start_of_day="09:00:00",
+            timezone="UTC",
+            weekends=["Sat", "Sun"],
+            working_weekends=["2025-01-11"],  # Saturday Jan 11 as working
+            nonworking_weekdays=["2025-01-11"]  # Same Saturday as nonworking (vacation)
+        )
+        
+        # Mock current time to Saturday 08:00 (before start_of_day)
+        with patch('pendulum.now') as mock_now:
+            # Saturday, Jan 11, 2025 08:00 UTC
+            mock_now.return_value = pendulum.parse("2025-01-11T08:00:00+00:00")
+            
+            result = schedule.get_next_working_day("UTC")
+            
+            # Should return Monday (Jan 13, 2025) since nonworking has priority
+            expected = Date(2025, 1, 13)
+            assert result == expected
+    
+    def test_multiple_consecutive_nonworking_days(self):
+        """Test multiple consecutive nonworking days"""
+        schedule = Schedule(
+            name="default",
+            start_of_day="09:00:00",
+            timezone="UTC",
+            weekends=["Sat", "Sun"],
+            nonworking_weekdays=["2025-01-08", "2025-01-10"]  # Wed Jan 8 and Fri Jan 10
+        )
+        
+        # Mock current time to Wednesday 08:00 (before start_of_day)
+        with patch('pendulum.now') as mock_now:
+            # Wednesday, Jan 8, 2025 08:00 UTC
+            mock_now.return_value = pendulum.parse("2025-01-08T08:00:00+00:00")
+            
+            result = schedule.get_next_working_day("UTC")
+            
+            # Should return Thursday (Jan 9, 2025), skipping Wed (nonworking) and Fri (nonworking)
+            expected = Date(2025, 1, 9)
+            assert result == expected
+    
+    def test_nonworking_weekday_range(self):
+        """Test nonworking weekday specified as a range"""
+        schedule = Schedule(
+            name="default",
+            start_of_day="09:00:00",
+            timezone="UTC",
+            weekends=["Sat", "Sun"],
+            nonworking_weekdays=[["2025-01-08", "2025-01-10"]]  # Range Wed-Fri
+        )
+        
+        # Mock current time to Thursday 08:00 (before start_of_day, in nonworking range)
+        with patch('pendulum.now') as mock_now:
+            # Thursday, Jan 9, 2025 08:00 UTC
+            mock_now.return_value = pendulum.parse("2025-01-09T08:00:00+00:00")
+            
+            result = schedule.get_next_working_day("UTC")
+            
+            # Should return Monday (Jan 13, 2025), skipping Thu/Fri (nonworking range) and weekend
+            expected = Date(2025, 1, 13)
+            assert result == expected
+    
+    def test_timezone_handling(self):
+        """Test that timezone is handled correctly"""
+        schedule = Schedule(
+            name="default",
+            start_of_day="09:00:00",
+            timezone="America/New_York",
+            weekends=["Sat", "Sun"]
+        )
+        
+        # Mock current time to 08:00 in New York (before start_of_day in local time)
+        with patch('pendulum.now') as mock_now:
+            # Wednesday, Jan 8, 2025 08:00 EST
+            mock_now.return_value = pendulum.parse("2025-01-08T08:00:00-05:00")
+            
+            result = schedule.get_next_working_day("America/New_York")
+            
+            # Should return today since it's before start_of_day in the specified timezone
+            expected = Date(2025, 1, 8)
+            assert result == expected
+    
+    def test_auto_timezone(self):
+        """Test auto timezone detection"""
+        schedule = Schedule(
+            name="default",
+            start_of_day="09:00:00",
+            timezone="UTC",
+            weekends=["Sat", "Sun"]
+        )
+        
+        with patch('pendulum.now') as mock_now, \
+             patch('pendulum.local_timezone') as mock_local_tz:
+            
+            # Mock local timezone as UTC
+            mock_local_tz.return_value = pendulum.timezone("UTC")
+            # Wednesday, Jan 8, 2025 08:00 UTC (before start_of_day)
+            mock_now.return_value = pendulum.parse("2025-01-08T08:00:00+00:00")
+            
+            result = schedule.get_next_working_day("auto")
+            
+            # Should return today
+            expected = Date(2025, 1, 8)
+            assert result == expected
+    
+    def test_complex_scenario_weekend_to_next_weekday(self):
+        """Test complex scenario: weekend -> nonworking Monday -> working Tuesday"""
+        schedule = Schedule(
+            name="default",
+            start_of_day="09:00:00",
+            timezone="UTC",
+            weekends=["Sat", "Sun"],
+            nonworking_weekdays=["2025-01-13"]  # Monday Jan 13
+        )
+        
+        # Mock current time to Sunday 10:00 (after start_of_day, weekend)
+        with patch('pendulum.now') as mock_now:
+            # Sunday, Jan 12, 2025 10:00 UTC
+            mock_now.return_value = pendulum.parse("2025-01-12T10:00:00+00:00")
+            
+            result = schedule.get_next_working_day("UTC")
+            
+            # Should return Tuesday (Jan 14, 2025), skipping Monday (nonworking)
+            expected = Date(2025, 1, 14)
+            assert result == expected
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
