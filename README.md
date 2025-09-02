@@ -61,17 +61,19 @@ cp config.template.toml config.toml
 
 4. Настройте `config.toml`:
 
-### Простая конфигурация (обратная совместимость)
+### Конфигурация расписаний
 ```toml
 [auth]
 api_id = 12345  # Ваш API ID от https://my.telegram.org
 api_hash = "your_api_hash"  # Ваш API Hash
 phone_number = "+1234567890"  # Ваш номер телефона
 
-[time_settings]
-start_of_day = "10:00:00"  # Время начала рабочего дня
-timezone = "auto"  # "auto" для системной зоны или "Europe/Moscow"
-weekends = ["Sat", "Sun"]  # Выходные дни
+# Определение расписаний - минимум требуется расписание "default"
+[[schedules]]
+name = "default"          # Обязательное расписание "default"
+start_of_day = "10:00:00" # Время начала рабочего дня
+timezone = "auto"         # "auto" для системной зоны или "Europe/Moscow"
+weekends = ["Sat", "Sun"] # Выходные дни
 
 # Рабочие выходные (конкретные даты или интервалы)
 working_weekends = [
@@ -84,21 +86,8 @@ nonworking_weekdays = [
     "2025-12-31",  # Новый год
     ["2026-01-01", "2026-01-07"]  # Новогодние каникулы
 ]
-```
 
-### Мульти-расписания (новая функциональность)
-```toml
-[auth]
-api_id = 12345  
-api_hash = "your_api_hash"
-phone_number = "+1234567890"
-
-# Определение расписаний
-[[schedules]]
-name = "default"          # Обязательное расписание "default"
-start_of_day = "10:00:00"
-timezone = "auto"
-weekends = ["Sat", "Sun"]
+# Дополнительные расписания с наследованием
 
 [[schedules]]
 name = "work"

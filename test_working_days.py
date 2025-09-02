@@ -5,7 +5,7 @@ from pendulum import WeekDay, Date
 from unittest.mock import patch
 from pydantic import ValidationError
 
-from telegram_muter import TimeSettings, Settings, AuthSettings, Schedule, ScheduleManager, GroupSetting
+from telegram_muter import Settings, AuthSettings, Schedule, ScheduleManager, GroupSetting
 
 
 class TestScheduleSystem:

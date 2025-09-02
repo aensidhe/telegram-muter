@@ -192,39 +192,6 @@ class GroupSetting(BaseModel):
         if self.name and self.name_pattern:
             raise ValueError("'name' and 'name_pattern' are mutually exclusive")
 
-class TimeSettings:
-    """Compatibility class that wraps a Schedule for backward compatibility"""
-    def __init__(self, schedule: Schedule):
-        self._schedule = schedule
-    
-    @property
-    def start_of_day(self) -> Time:
-        return self._schedule.start_of_day
-    
-    @property
-    def timezone(self) -> str:
-        return self._schedule.timezone
-    
-    @property
-    def weekends(self) -> List[WeekDay]:
-        return self._schedule.weekends
-    
-    @property
-    def working_weekends(self) -> List[Union[Date, Tuple[Date, Date]]]:
-        return self._schedule.working_weekends
-    
-    @property
-    def nonworking_weekdays(self) -> List[Union[Date, Tuple[Date, Date]]]:
-        return self._schedule.nonworking_weekdays
-    
-    def get_next_working_day(self, timezone_setting: str = "auto") -> Date:
-        return self._schedule.get_next_working_day(timezone_setting)
-    
-    def _is_working_date(self, date: Date) -> bool:
-        return self._schedule._is_working_date(date)
-    
-    def _is_nonworking_date(self, date: Date) -> bool:
-        return self._schedule._is_nonworking_date(date)
 
 
 class ScheduleManager:
@@ -281,7 +248,7 @@ class ScheduleManager:
         else:
             return None
 
-    def get_effective_schedule(self, schedule_name: str) -> TimeSettings:
+    def get_effective_schedule(self, schedule_name: str) -> Schedule:
         """Get the effective schedule by resolving all properties through inheritance"""
         if schedule_name not in self.schedules:
             schedule_name = 'default'
@@ -336,9 +303,9 @@ class ScheduleManager:
             nonworking_weekdays=nonworking_weekdays
         )
         
-        return TimeSettings(effective_schedule)
+        return effective_schedule
 
-    def get_schedule_for_group(self, group_name: str) -> TimeSettings:
+    def get_schedule_for_group(self, group_name: str) -> Schedule:
         """Get the appropriate schedule for a group based on group settings"""
         # First try exact name match
         for group_setting in self.group_settings:

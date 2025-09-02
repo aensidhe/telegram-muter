@@ -61,17 +61,19 @@ cp config.template.toml config.toml
 
 4. Configure `config.toml`:
 
-### Simple Configuration (backward compatible)
+### Schedule Configuration
 ```toml
 [auth]
 api_id = 12345  # Your API ID from https://my.telegram.org
 api_hash = "your_api_hash"  # Your API Hash
 phone_number = "+1234567890"  # Your phone number
 
-[time_settings]
-start_of_day = "10:00:00"  # Work day start time
-timezone = "auto"  # "auto" for system timezone or "Europe/London"
-weekends = ["Sat", "Sun"]  # Weekend days
+# Define schedules - at least "default" schedule is required
+[[schedules]]
+name = "default"          # Required: must have a schedule named "default"
+start_of_day = "10:00:00" # Work day start time
+timezone = "auto"         # "auto" for system timezone or "Europe/London"
+weekends = ["Sat", "Sun"] # Weekend days
 
 # Working weekends (specific dates or date intervals)
 working_weekends = [
@@ -84,21 +86,8 @@ nonworking_weekdays = [
     "2025-12-31",  # New Year's Eve
     ["2026-01-01", "2026-01-07"]  # New Year holidays
 ]
-```
 
-### Multi-Schedule Configuration (new feature)
-```toml
-[auth]
-api_id = 12345
-api_hash = "your_api_hash"
-phone_number = "+1234567890"
-
-# Define schedules
-[[schedules]]
-name = "default"          # Required: must have a schedule named "default"
-start_of_day = "10:00:00"
-timezone = "auto"
-weekends = ["Sat", "Sun"]
+# Additional schedules with inheritance
 
 [[schedules]]
 name = "work"

@@ -4,13 +4,11 @@ api_id = 12345
 api_hash = "your_api_hash"
 phone_number = "+1234567890"
 
-# ============================================================================
-# LEGACY SINGLE SCHEDULE CONFIGURATION (backward compatible)
-# ============================================================================
-# You can still use the old format with a single schedule:
-[time_settings]
+# Define schedules - at least "default" schedule is required
+[[schedules]]
+name = "default"          # Required: must have a schedule named "default"
 start_of_day = "10:00:00"
-timezone = "auto"  # Use "auto" for system timezone, or specify like "Europe/London", "America/New_York", etc.
+timezone = "auto"         # Use "auto" for system timezone, or specify like "Europe/London", "America/New_York", etc.
 weekends = ["Sat", "Sun"]
 
 # Working weekends (specific dates or date intervals)
@@ -19,26 +17,13 @@ working_weekends = [
     ["2025-12-25", "2025-12-31"]  # Date interval
 ]
 
-# Nonworking weekdays (specific dates or date intervals)
+# Nonworking weekdays (specific dates or date intervals)  
 nonworking_weekdays = [
-    "2025-12-31",
+    "2025-12-31", 
     ["2026-01-01", "2026-01-07"]  # Date interval
 ]
 
-# ============================================================================
-# MULTI-SCHEDULE CONFIGURATION (new feature)
-# ============================================================================
-# Instead of time_settings above, you can define multiple schedules with inheritance:
-
-# Define schedules (comment out time_settings above if using this)
-# [[schedules]]
-# name = "default"          # Required: must have a schedule named "default"
-# start_of_day = "10:00:00"
-# timezone = "auto"
-# weekends = ["Sat", "Sun"]
-# working_weekends = ["2025-12-25"]
-# nonworking_weekdays = ["2025-01-01"]
-
+# Example of additional schedules with inheritance
 # [[schedules]]
 # name = "work"
 # parent = "default"        # Inherits from default, can override any properties
