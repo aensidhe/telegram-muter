@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from telethon.errors.rpcerrorlist import FloodWaitError
 from telethon.tl.types import InputPeerNotifySettings, InputPeerChannel, Chat, InputPeerChat, User
 
-from telegram_muter import TimeSettings, Settings, AuthSettings, handle_rate_limit, main, mute_chats, unmute_chats, get_peer_for_dialog
+from telegram_muter import Schedule, Settings, AuthSettings, handle_rate_limit, main, mute_chats, unmute_chats, get_peer_for_dialog
 
 
 class TestTelegramIntegration:
@@ -14,19 +14,21 @@ class TestTelegramIntegration:
     @pytest.fixture
     def mock_settings(self):
         """Create mock settings for testing"""
+        default_schedule = Schedule(
+            name="default",
+            start_of_day="10:00:00",
+            timezone="auto",
+            weekends=["Sat", "Sun"],
+            working_weekends=["2025-09-06"],  # Saturday is working
+            nonworking_weekdays=["2025-09-05"]  # Friday is vacation
+        )
         return Settings(
             auth=AuthSettings(
                 api_id=12345,
                 api_hash="test_hash",
                 phone_number="+1234567890"
             ),
-            time_settings=TimeSettings(
-                start_of_day="10:00:00",
-                timezone="auto",
-                weekends=["Sat", "Sun"],
-                working_weekends=["2025-09-06"],  # Saturday is working
-                nonworking_weekdays=["2025-09-05"]  # Friday is vacation
-            )
+            schedules=[default_schedule]
         )
 
     @pytest.fixture
@@ -73,8 +75,9 @@ class TestTelegramIntegration:
     async def test_handle_rate_limit_with_flood_wait(self):
         """Test rate limiting handler with FloodWaitError"""
         mock_operation = AsyncMock()
-        # Create FloodWaitError with correct signature
-        flood_error = FloodWaitError(1)  # Just pass the seconds directly
+        # Create FloodWaitError with specific seconds
+        flood_error = FloodWaitError("FLOOD_WAIT_1")
+        flood_error.seconds = 1  # Manually set the seconds attribute
         mock_operation.side_effect = [
             flood_error,  # First call raises error
             "success"  # Second call succeeds
@@ -132,7 +135,8 @@ class TestTelegramIntegration:
         with patch('pendulum.now') as mock_now, \
              patch('telegram_muter.settings', mock_settings), \
              patch('telegram_muter.TelegramClient') as mock_client_class, \
-             patch('telegram_muter.handle_rate_limit', new_callable=AsyncMock) as mock_handle_rate_limit:
+             patch('telegram_muter.handle_rate_limit', new_callable=AsyncMock) as mock_handle_rate_limit, \
+             patch('sys.argv', ['telegram_muter.py', 'mute']):
             
             # Mock current time
             mock_time = pendulum.parse("2025-09-04T11:00:00")  # Thursday after start_of_day
@@ -173,7 +177,8 @@ class TestTelegramIntegration:
         with patch('pendulum.now') as mock_now, \
              patch('telegram_muter.settings', mock_settings), \
              patch('telegram_muter.TelegramClient') as mock_client_class, \
-             patch('telegram_muter.handle_rate_limit', new_callable=AsyncMock) as mock_handle_rate_limit:
+             patch('telegram_muter.handle_rate_limit', new_callable=AsyncMock) as mock_handle_rate_limit, \
+             patch('sys.argv', ['telegram_muter.py', 'mute']):
             
             # Mock current time
             mock_time = pendulum.parse("2025-09-04T11:00:00")
@@ -194,8 +199,8 @@ class TestTelegramIntegration:
             # Configure handle_rate_limit
             async def handle_rate_limit_side_effect(operation, *args, **kwargs):
                 if operation == mock_client.get_dialogs:
-                    return [mock_dialog]
-                elif str(operation).find('GetNotifySettingsRequest') != -1:
+                    return [mock_channel_dialog]
+                elif operation == mock_client:  # This is the GetNotifySettingsRequest call
                     return mock_notify_settings
                 return await operation(*args, **kwargs)
             
@@ -214,7 +219,8 @@ class TestTelegramIntegration:
         with patch('pendulum.now') as mock_now, \
              patch('telegram_muter.settings', mock_settings), \
              patch('telegram_muter.TelegramClient') as mock_client_class, \
-             patch('telegram_muter.handle_rate_limit', new_callable=AsyncMock) as mock_handle_rate_limit:
+             patch('telegram_muter.handle_rate_limit', new_callable=AsyncMock) as mock_handle_rate_limit, \
+             patch('sys.argv', ['telegram_muter.py', 'mute']):
             
             # Mock current time
             mock_time = pendulum.parse("2025-09-04T11:00:00")  # Thursday after start_of_day
@@ -256,7 +262,8 @@ class TestTelegramIntegration:
              patch('telegram_muter.settings', mock_settings), \
              patch('telegram_muter.TelegramClient') as mock_client_class, \
              patch('telegram_muter.handle_rate_limit', new_callable=AsyncMock) as mock_handle_rate_limit, \
-             patch('builtins.print') as mock_print:
+             patch('builtins.print') as mock_print, \
+             patch('sys.argv', ['telegram_muter.py', 'mute']):
             
             # Mock current time
             mock_time = pendulum.parse("2025-09-04T11:00:00")
@@ -297,7 +304,8 @@ class TestTelegramIntegration:
     @pytest.mark.asyncio
     async def test_timezone_handling(self):
         """Test timezone handling in working day calculation"""
-        settings = TimeSettings(
+        schedule = Schedule(
+            name="test",
             start_of_day="10:00:00",
             timezone="Europe/London",
             weekends=["Sat", "Sun"],
@@ -306,11 +314,11 @@ class TestTelegramIntegration:
         )
         
         # Test with specific timezone
-        next_working_day = settings.get_next_working_day("Europe/London")
+        next_working_day = schedule.get_next_working_day("Europe/London")
         assert isinstance(next_working_day, pendulum.Date)
         
         # Test with auto timezone
-        next_working_day = settings.get_next_working_day("auto")
+        next_working_day = schedule.get_next_working_day("auto")
         assert isinstance(next_working_day, pendulum.Date)
 
     def test_input_peer_channel_creation(self, mock_channel_dialog):
@@ -337,7 +345,8 @@ class TestTelegramIntegration:
     @pytest.mark.asyncio
     async def test_complex_working_day_scenario_integration(self):
         """Test complex working day scenario in integration context"""
-        settings = TimeSettings(
+        schedule = Schedule(
+            name="test",
             start_of_day="09:00:00",
             timezone="auto",
             weekends=["Sat", "Sun"],
@@ -350,7 +359,7 @@ class TestTelegramIntegration:
             mock_time = pendulum.parse("2025-12-26T18:00:00")  # Friday
             mock_now.return_value = mock_time
             
-            next_working_day = settings.get_next_working_day()
+            next_working_day = schedule.get_next_working_day()
             
             # Should be working Saturday (2025-12-28) since:
             # - Saturday (2025-12-27) is weekend and not in working_weekends
@@ -402,8 +411,10 @@ class TestTelegramIntegration:
             mock_client.disconnect.return_value = None
             
             # Calculate expected target mute time (same as the muting logic)
-            next_working_day = mock_settings.time_settings.get_next_working_day()
-            start_of_day = mock_settings.time_settings.start_of_day
+            schedule_manager_instance = mock_settings.get_schedule_manager()
+            default_schedule = schedule_manager_instance.get_effective_schedule('default')
+            next_working_day = default_schedule.get_next_working_day()
+            start_of_day = default_schedule.start_of_day
             target_mute_until = pendulum.datetime(
                 next_working_day.year,
                 next_working_day.month,
