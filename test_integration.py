@@ -1,3 +1,7 @@
+# Copyright (c) 2025-2025. aensidhe
+#
+# See LICENSE file.
+
 import pytest
 import asyncio
 import pendulum

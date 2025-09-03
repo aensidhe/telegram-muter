@@ -1,3 +1,7 @@
+# Copyright (c) 2025-2025. aensidhe
+#
+# See LICENSE file.
+
 from telegram_muter import Settings, load_settings_from_toml
 
 # Load settings from TOML file

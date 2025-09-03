@@ -1,3 +1,7 @@
+# Copyright (c) 2025-2025. aensidhe
+#
+# See LICENSE file.
+
 # -*- coding: utf-8 -*-
 import pytest
 import pendulum

@@ -12,19 +12,19 @@ Telegram Muter is a Python application that connects to the Telegram API and mut
   - Create multiple named schedules
   - Schedule inheritance from parent schedules with ability to override any properties
   - Configure different schedules for different groups by exact name or regex pattern matching
-  
+
 - **Smart next working day calculation** considering:
   - Regular weekend days (Saturday and Sunday by default)
   - Working weekends (e.g., Saturday that should be treated as a working day)
   - Non-working weekdays (e.g., holidays)
   - Time zones
   - Work start and end times
-  
+
 - **Support for different chat types**:
   - Regular groups (Chat)
   - Supergroups and channels (Channel)
   - Automatic skipping of private chats
-  
+
 - **Two operating modes**:
   - `mute` — mute notifications until next working day (respecting individual group schedules)
   - `unmute` — unmute chats that were muted until next working day start
@@ -32,7 +32,7 @@ Telegram Muter is a Python application that connects to the Telegram API and mut
 - **Working hours protection**:
   - Automatic check if we're during working hours (between `start_of_day` and `end_of_day`)
   - `--finish-the-day` parameter to force muting at end of day
-  
+
 - **Support for Russian and English day names**
 - **Telegram API rate limiting handling**
 - **Skips already muted groups**
@@ -154,7 +154,7 @@ On first run you will need to:
 
 - **Time**: HH:MM:SS format (e.g., "10:00:00")
 - **Dates**: ISO8601 YYYY-MM-DD format only (e.g., "2025-12-31")
-- **Weekdays**: 
+- **Weekdays**:
   - English: Mon, Tue, Wed, Thu, Fri, Sat, Sun
   - Russian: Пн, Вт, Ср, Чт, Пт, Сб, Вс
 - **Date intervals**: Array of two dates `["2025-12-25", "2025-12-31"]` (both boundaries inclusive)
@@ -188,7 +188,7 @@ pytest test_integration.py -v
 
 ## License
 
-Unlicense (public domain) — see [LICENSE](LICENSE) file
+MIT — see [LICENSE](LICENSE) file
 
 ## Support
 

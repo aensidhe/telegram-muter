@@ -1,3 +1,7 @@
+# Copyright (c) 2025-2025. aensidhe
+#
+# See LICENSE file.
+
 import asyncio
 import argparse
 from getpass import getpass
