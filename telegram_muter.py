@@ -23,6 +23,7 @@ class Schedule(BaseModel):
     name: str
     parent: str = Field(default="")
     start_of_day: Optional[Any] = Field(default=None)
+    end_of_day: Optional[Any] = Field(default=None)
     timezone: str = Field(default="")
     weekends: List[Any] = Field(default=[])
     working_weekends: List[Union[str, List[str]]] = Field(default=[])
@@ -31,6 +32,17 @@ class Schedule(BaseModel):
     @field_validator('start_of_day')
     @classmethod
     def parse_start_of_day(cls, v: Any) -> Optional[Time]:
+        if v is None:
+            return None
+        if isinstance(v, Time):
+            return v
+        if isinstance(v, str):
+            return pendulum.parse(v).time()
+        raise ValueError(f"Cannot parse {v} as Time")
+
+    @field_validator('end_of_day')
+    @classmethod
+    def parse_end_of_day(cls, v: Any) -> Optional[Time]:
         if v is None:
             return None
         if isinstance(v, Time):
@@ -198,16 +210,16 @@ class ScheduleManager:
     def __init__(self, schedules: List[Schedule], group_settings: List[GroupSetting] = None):
         self.schedules = {s.name: s for s in schedules}
         self.group_settings = group_settings or []
-        
+
         # Validate schedules
         if 'default' not in self.schedules:
             raise ValueError("Schedule 'default' must be defined")
-        
+
         # Validate parent references
         for schedule in schedules:
             if schedule.parent and schedule.parent not in self.schedules:
                 raise ValueError(f"Schedule '{schedule.name}' references unknown parent '{schedule.parent}'")
-        
+
         # Check for circular dependencies
         self._validate_no_circular_dependencies()
 
@@ -215,7 +227,7 @@ class ScheduleManager:
         for schedule_name in self.schedules:
             visited = set()
             current = schedule_name
-            
+
             while current:
                 if current in visited:
                     raise ValueError(f"Circular dependency detected in schedule hierarchy involving '{schedule_name}'")
@@ -225,21 +237,21 @@ class ScheduleManager:
     def _resolve_schedule_property(self, schedule_name: str, property_name: str):
         """Resolve a property value by walking up the parent chain"""
         current = schedule_name
-        
+
         while current:
             schedule = self.schedules[current]
             value = getattr(schedule, property_name)
-            
-            # For start_of_day and timezone, check for None/"" specifically
-            if property_name in ['start_of_day', 'timezone']:
+
+            # For start_of_day, end_of_day and timezone, check for None/"" specifically
+            if property_name in ['start_of_day', 'end_of_day', 'timezone']:
                 if value is not None and value != "":
                     return value
             # For lists, check if they're not empty
             elif isinstance(value, list) and value:
                 return value
-                
+
             current = schedule.parent
-        
+
         # If we reach here without finding a value, return appropriate default
         if property_name == 'timezone':
             return "auto"
@@ -252,16 +264,18 @@ class ScheduleManager:
         """Get the effective schedule by resolving all properties through inheritance"""
         if schedule_name not in self.schedules:
             schedule_name = 'default'
-        
+
         # Create an effective schedule by resolving all properties
         start_of_day_raw = self._resolve_schedule_property(schedule_name, 'start_of_day')
-        timezone = self._resolve_schedule_property(schedule_name, 'timezone') 
+        end_of_day_raw = self._resolve_schedule_property(schedule_name, 'end_of_day')
+        timezone = self._resolve_schedule_property(schedule_name, 'timezone')
         weekends_raw = self._resolve_schedule_property(schedule_name, 'weekends')
         working_weekends_raw = self._resolve_schedule_property(schedule_name, 'working_weekends')
         nonworking_weekdays_raw = self._resolve_schedule_property(schedule_name, 'nonworking_weekdays')
-        
+
         # Convert resolved properties back to strings for Schedule creation
         start_of_day = start_of_day_raw.isoformat() if start_of_day_raw else "09:00:00"
+        end_of_day = end_of_day_raw.isoformat() if end_of_day_raw else "19:00:00"
         
         # Convert weekends back to strings
         weekends = []
@@ -297,6 +311,7 @@ class ScheduleManager:
         effective_schedule = Schedule(
             name=f"_effective_{schedule_name}",
             start_of_day=start_of_day,
+            end_of_day=end_of_day,
             timezone=timezone or "auto",
             weekends=weekends,
             working_weekends=working_weekends,
@@ -534,6 +549,32 @@ async def mute_chats():
     # Disconnect from the Telegram API
     await client.disconnect()
 
+def is_working_hours() -> bool:
+    """Check if current time is within working hours (between start_of_day and end_of_day)"""
+    if settings is None:
+        return False
+        
+    schedule_manager_instance = settings.get_schedule_manager()
+    default_schedule = schedule_manager_instance.get_effective_schedule('default')
+    
+    timezone_setting = default_schedule.timezone
+    if timezone_setting == "auto":
+        tz = pendulum.local_timezone()
+    else:
+        tz = pendulum.timezone(timezone_setting)
+    
+    now = pendulum.now(tz)
+    current_time = now.time()
+    
+    start_of_day = default_schedule.start_of_day
+    end_of_day = default_schedule.end_of_day
+    
+    # Check if current time is between start_of_day and end_of_day
+    if start_of_day <= current_time <= end_of_day:
+        return True
+    
+    return False
+
 async def main():
     parser = argparse.ArgumentParser(
         description="Telegram Muter - Mute/unmute Telegram chats until next working day"
@@ -545,10 +586,19 @@ async def main():
         default="mute",
         help="Command to execute (default: mute)"
     )
+    parser.add_argument(
+        "--finish-the-day",
+        action="store_true",
+        help="Ignore end_of_day setting and proceed with muting (for mute command only)"
+    )
     
     args = parser.parse_args()
     
     if args.command == "mute":
+        # Check working hours only for mute command and only if --finish-the-day is not provided
+        if not args.finish_the_day and is_working_hours():
+            print("It's working hours now, not muting chats")
+            return 0
         await mute_chats()
     elif args.command == "unmute":
         await unmute_chats()

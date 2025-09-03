@@ -8,6 +8,7 @@ phone_number = "+1234567890"
 [[schedules]]
 name = "default"          # Required: must have a schedule named "default"
 start_of_day = "10:00:00"
+end_of_day = "19:00:00"   # End of working day - script won't mute during work hours
 timezone = "auto"         # Use "auto" for system timezone, or specify like "Europe/London", "America/New_York", etc.
 weekends = ["Sat", "Sun"]
 
@@ -48,4 +49,3 @@ nonworking_weekdays = [
 # [[group_settings]]
 # name_pattern = "weekend.*"
 # schedule = "default"      # Use default schedule for weekend groups
-

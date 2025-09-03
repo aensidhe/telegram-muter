@@ -5,7 +5,7 @@ from pendulum import WeekDay, Date
 from unittest.mock import patch
 from pydantic import ValidationError
 
-from telegram_muter import Settings, AuthSettings, Schedule, ScheduleManager, GroupSetting
+from telegram_muter import Settings, AuthSettings, Schedule, ScheduleManager, GroupSetting, is_working_hours
 
 
 class TestScheduleSystem:
@@ -19,6 +19,21 @@ class TestScheduleSystem:
             weekends=["Sat", "Sun"]
         )
         assert schedule.name == "test"
+        assert schedule.timezone == "Europe/London"
+        assert schedule.weekends == [WeekDay.SATURDAY, WeekDay.SUNDAY]
+    
+    def test_schedule_creation_with_end_of_day(self):
+        """Test schedule creation with end_of_day"""
+        schedule = Schedule(
+            name="test",
+            start_of_day="09:00:00",
+            end_of_day="19:00:00",
+            timezone="Europe/London",
+            weekends=["Sat", "Sun"]
+        )
+        assert schedule.name == "test"
+        assert schedule.start_of_day.hour == 9
+        assert schedule.end_of_day.hour == 18
         assert schedule.timezone == "Europe/London"
         assert schedule.weekends == [WeekDay.SATURDAY, WeekDay.SUNDAY]
 
@@ -429,6 +444,181 @@ class TestGetNextWorkingDay:
             # Should return Tuesday (Jan 14, 2025), skipping Monday (nonworking)
             expected = Date(2025, 1, 14)
             assert result == expected
+
+
+class TestIsWorkingHours:
+    """Test the is_working_hours function"""
+    
+    @patch('telegram_muter.settings')
+    def test_during_working_hours(self, mock_settings):
+        """Test when current time is during working hours"""
+        # Setup mock schedule
+        schedule = Schedule(
+            name="default",
+            start_of_day="09:00:00",
+            end_of_day="19:00:00",
+            timezone="UTC",
+            weekends=["Sat", "Sun"]
+        )
+        mock_manager = ScheduleManager([schedule])
+        mock_settings.get_schedule_manager.return_value = mock_manager
+        
+        # Mock current time to 14:00 (2 PM) UTC - during working hours
+        with patch('pendulum.now') as mock_now, \
+             patch('pendulum.local_timezone') as mock_local_tz:
+            
+            mock_local_tz.return_value = pendulum.timezone("UTC")
+            mock_now.return_value = pendulum.parse("2025-01-08T14:00:00+00:00")
+            
+            result = is_working_hours()
+            assert result is True
+    
+    @patch('telegram_muter.settings')
+    def test_before_working_hours(self, mock_settings):
+        """Test when current time is before working hours"""
+        # Setup mock schedule
+        schedule = Schedule(
+            name="default",
+            start_of_day="09:00:00",
+            end_of_day="19:00:00",
+            timezone="UTC",
+            weekends=["Sat", "Sun"]
+        )
+        mock_manager = ScheduleManager([schedule])
+        mock_settings.get_schedule_manager.return_value = mock_manager
+        
+        # Mock current time to 08:00 (8 AM) UTC - before working hours
+        with patch('pendulum.now') as mock_now, \
+             patch('pendulum.local_timezone') as mock_local_tz:
+            
+            mock_local_tz.return_value = pendulum.timezone("UTC")
+            mock_now.return_value = pendulum.parse("2025-01-08T08:00:00+00:00")
+            
+            result = is_working_hours()
+            assert result is False
+    
+    @patch('telegram_muter.settings')
+    def test_after_working_hours(self, mock_settings):
+        """Test when current time is after working hours"""
+        # Setup mock schedule
+        schedule = Schedule(
+            name="default",
+            start_of_day="09:00:00",
+            end_of_day="19:00:00",
+            timezone="UTC",
+            weekends=["Sat", "Sun"]
+        )
+        mock_manager = ScheduleManager([schedule])
+        mock_settings.get_schedule_manager.return_value = mock_manager
+        
+        # Mock current time to 19:00 (7 PM) UTC - after working hours
+        with patch('pendulum.now') as mock_now, \
+             patch('pendulum.local_timezone') as mock_local_tz:
+            
+            mock_local_tz.return_value = pendulum.timezone("UTC")
+            mock_now.return_value = pendulum.parse("2025-01-08T19:00:00+00:00")
+            
+            result = is_working_hours()
+            assert result is False
+    
+    @patch('telegram_muter.settings')
+    def test_at_start_of_day(self, mock_settings):
+        """Test when current time is exactly at start of day"""
+        # Setup mock schedule
+        schedule = Schedule(
+            name="default",
+            start_of_day="09:00:00",
+            end_of_day="19:00:00",
+            timezone="UTC",
+            weekends=["Sat", "Sun"]
+        )
+        mock_manager = ScheduleManager([schedule])
+        mock_settings.get_schedule_manager.return_value = mock_manager
+        
+        # Mock current time to 09:00 (9 AM) UTC - exactly at start
+        with patch('pendulum.now') as mock_now, \
+             patch('pendulum.local_timezone') as mock_local_tz:
+            
+            mock_local_tz.return_value = pendulum.timezone("UTC")
+            mock_now.return_value = pendulum.parse("2025-01-08T09:00:00+00:00")
+            
+            result = is_working_hours()
+            assert result is True
+    
+    @patch('telegram_muter.settings')
+    def test_at_end_of_day(self, mock_settings):
+        """Test when current time is exactly at end of day"""
+        # Setup mock schedule
+        schedule = Schedule(
+            name="default",
+            start_of_day="09:00:00",
+            end_of_day="19:00:00",
+            timezone="UTC",
+            weekends=["Sat", "Sun"]
+        )
+        mock_manager = ScheduleManager([schedule])
+        mock_settings.get_schedule_manager.return_value = mock_manager
+        
+        # Mock current time to 18:00 (6 PM) UTC - exactly at end
+        with patch('pendulum.now') as mock_now, \
+             patch('pendulum.local_timezone') as mock_local_tz:
+            
+            mock_local_tz.return_value = pendulum.timezone("UTC")
+            mock_now.return_value = pendulum.parse("2025-01-08T19:00:00+00:00")
+            
+            result = is_working_hours()
+            assert result is True
+    
+    @patch('telegram_muter.settings')
+    def test_timezone_handling(self, mock_settings):
+        """Test timezone handling in working hours check"""
+        # Setup mock schedule with New York timezone
+        schedule = Schedule(
+            name="default",
+            start_of_day="09:00:00",
+            end_of_day="19:00:00",
+            timezone="America/New_York",
+            weekends=["Sat", "Sun"]
+        )
+        mock_manager = ScheduleManager([schedule])
+        mock_settings.get_schedule_manager.return_value = mock_manager
+        
+        # Mock current time to 14:00 EST (2 PM) - during working hours in NY
+        with patch('pendulum.now') as mock_now:
+            mock_now.return_value = pendulum.parse("2025-01-08T14:00:00-05:00")
+            
+            result = is_working_hours()
+            assert result is True
+    
+    @patch('telegram_muter.settings')
+    def test_auto_timezone_handling(self, mock_settings):
+        """Test auto timezone handling in working hours check"""
+        # Setup mock schedule with auto timezone
+        schedule = Schedule(
+            name="default",
+            start_of_day="09:00:00",
+            end_of_day="19:00:00",
+            timezone="auto",
+            weekends=["Sat", "Sun"]
+        )
+        mock_manager = ScheduleManager([schedule])
+        mock_settings.get_schedule_manager.return_value = mock_manager
+        
+        # Mock current time to 14:00 local time - during working hours
+        with patch('pendulum.now') as mock_now, \
+             patch('pendulum.local_timezone') as mock_local_tz:
+            
+            mock_local_tz.return_value = pendulum.timezone("UTC")
+            mock_now.return_value = pendulum.parse("2025-01-08T14:00:00+00:00")
+            
+            result = is_working_hours()
+            assert result is True
+    
+    @patch('telegram_muter.settings', None)
+    def test_no_settings_loaded(self):
+        """Test when settings are not loaded"""
+        result = is_working_hours()
+        assert result is False
 
 
 if __name__ == "__main__":

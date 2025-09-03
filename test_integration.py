@@ -138,8 +138,8 @@ class TestTelegramIntegration:
              patch('telegram_muter.handle_rate_limit', new_callable=AsyncMock) as mock_handle_rate_limit, \
              patch('sys.argv', ['telegram_muter.py', 'mute']):
             
-            # Mock current time
-            mock_time = pendulum.parse("2025-09-04T11:00:00")  # Thursday after start_of_day
+            # Mock current time - outside working hours (after 18:00)
+            mock_time = pendulum.parse("2025-09-04T19:00:00")  # Thursday after end_of_day
             mock_now.return_value = mock_time
             
             # Mock client
@@ -222,8 +222,8 @@ class TestTelegramIntegration:
              patch('telegram_muter.handle_rate_limit', new_callable=AsyncMock) as mock_handle_rate_limit, \
              patch('sys.argv', ['telegram_muter.py', 'mute']):
             
-            # Mock current time
-            mock_time = pendulum.parse("2025-09-04T11:00:00")  # Thursday after start_of_day
+            # Mock current time - outside working hours (after 18:00)
+            mock_time = pendulum.parse("2025-09-04T19:00:00")  # Thursday after end_of_day
             mock_now.return_value = mock_time
             
             # Mock client
@@ -253,6 +253,72 @@ class TestTelegramIntegration:
             await main()
             
             # Verify that handle_rate_limit was called for both get and update operations
+            assert mock_handle_rate_limit.call_count >= 2
+
+    @pytest.mark.asyncio
+    async def test_working_hours_protection(self, mock_settings, mock_channel_dialog):
+        """Test that muting is blocked during working hours without --finish-the-day flag"""
+        with patch('pendulum.now') as mock_now, \
+             patch('telegram_muter.settings', mock_settings), \
+             patch('telegram_muter.TelegramClient') as mock_client_class, \
+             patch('telegram_muter.handle_rate_limit', new_callable=AsyncMock) as mock_handle_rate_limit, \
+             patch('sys.argv', ['telegram_muter.py', 'mute']):
+            
+            # Mock current time - during working hours (between 10:00 and 18:00)
+            mock_time = pendulum.parse("2025-09-04T14:00:00")  # Thursday 2 PM
+            mock_now.return_value = mock_time
+            
+            # Mock client - shouldn't be used since we exit early
+            mock_client = AsyncMock()
+            mock_client_class.return_value = mock_client
+            
+            result = await main()
+            
+            # Should return 0 (success) but not connect to Telegram
+            assert result == 0
+            mock_client.connect.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_finish_the_day_flag(self, mock_settings, mock_channel_dialog):
+        """Test that --finish-the-day flag allows muting during working hours"""
+        with patch('pendulum.now') as mock_now, \
+             patch('telegram_muter.settings', mock_settings), \
+             patch('telegram_muter.TelegramClient') as mock_client_class, \
+             patch('telegram_muter.handle_rate_limit', new_callable=AsyncMock) as mock_handle_rate_limit, \
+             patch('sys.argv', ['telegram_muter.py', 'mute', '--finish-the-day']):
+            
+            # Mock current time - during working hours (between 10:00 and 18:00)
+            mock_time = pendulum.parse("2025-09-04T14:00:00")  # Thursday 2 PM
+            mock_now.return_value = mock_time
+            
+            # Mock client
+            mock_client = AsyncMock()
+            mock_client_class.return_value = mock_client
+            mock_client.connect.return_value = None
+            mock_client.is_user_authorized.return_value = True
+            mock_client.get_dialogs.return_value = [mock_channel_dialog]
+            mock_client.disconnect.return_value = None
+            
+            # Mock notify settings (group is not muted)
+            mock_notify_settings = MagicMock()
+            mock_notify_settings.mute_until = None
+            
+            # Configure handle_rate_limit to return appropriate values
+            async def handle_rate_limit_side_effect(operation, *args, **kwargs):
+                if hasattr(operation, '__name__') and operation.__name__ == 'get_dialogs':
+                    return [mock_channel_dialog]
+                elif 'GetNotifySettingsRequest' in str(args) if args else False:
+                    return mock_notify_settings
+                elif 'UpdateNotifySettingsRequest' in str(args) if args else False:
+                    return None
+                return await operation(*args, **kwargs)
+            
+            mock_handle_rate_limit.side_effect = handle_rate_limit_side_effect
+            
+            await main()
+            
+            # Should connect and proceed with muting despite working hours
+            mock_client.connect.assert_called_once()
             assert mock_handle_rate_limit.call_count >= 2
 
     @pytest.mark.asyncio
@@ -356,7 +422,7 @@ class TestTelegramIntegration:
         
         with patch('pendulum.now') as mock_now:
             # Mock Friday evening after work
-            mock_time = pendulum.parse("2025-12-26T18:00:00")  # Friday
+            mock_time = pendulum.parse("2025-12-26T19:00:00")  # Friday
             mock_now.return_value = mock_time
             
             next_working_day = schedule.get_next_working_day()

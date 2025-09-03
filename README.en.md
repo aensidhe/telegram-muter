@@ -18,7 +18,7 @@ Telegram Muter is a Python application that connects to the Telegram API and mut
   - Working weekends (e.g., Saturday that should be treated as a working day)
   - Non-working weekdays (e.g., holidays)
   - Time zones
-  - Work start time
+  - Work start and end times
   
 - **Support for different chat types**:
   - Regular groups (Chat)
@@ -28,6 +28,10 @@ Telegram Muter is a Python application that connects to the Telegram API and mut
 - **Two operating modes**:
   - `mute` — mute notifications until next working day (respecting individual group schedules)
   - `unmute` — unmute chats that were muted until next working day start
+
+- **Working hours protection**:
+  - Automatic check if we're during working hours (between `start_of_day` and `end_of_day`)
+  - `--finish-the-day` parameter to force muting at end of day
   
 - **Support for Russian and English day names**
 - **Telegram API rate limiting handling**
@@ -72,6 +76,7 @@ phone_number = "+1234567890"  # Your phone number
 [[schedules]]
 name = "default"          # Required: must have a schedule named "default"
 start_of_day = "10:00:00" # Work day start time
+end_of_day = "19:00:00"   # Work day end time - script won't mute during work hours
 timezone = "auto"         # "auto" for system timezone or "Europe/London"
 weekends = ["Sat", "Sun"] # Weekend days
 
@@ -122,6 +127,11 @@ schedule = "default"      # Weekend groups use default schedule
 python telegram_muter.py
 # or explicitly
 python telegram_muter.py mute
+```
+
+### Force mute at end of working day
+```bash
+python telegram_muter.py mute --finish-the-day
 ```
 
 ### Unmute notifications
