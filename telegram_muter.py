@@ -518,10 +518,6 @@ async def mute_chats(finish_the_day: bool = False):
         next_working_day = group_schedule.get_next_working_day(timezone_setting)
         start_of_day = group_schedule.start_of_day
 
-        if not finish_the_day and group_schedule.is_working_hours(now):
-            print(f"Skipping chat '{dialog.name}': {now} is working hours for this chat according to schedule.")
-            continue
-
         mute_until = pendulum.datetime(
             next_working_day.year,
             next_working_day.month,
@@ -535,6 +531,9 @@ async def mute_chats(finish_the_day: bool = False):
         peer = await get_peer_for_dialog(dialog)
 
         if peer is not None:
+            if not finish_the_day and group_schedule.is_working_hours(now):
+                print(f"Skipping chat '{dialog.name}': {now} is working hours for this chat according to schedule.")
+                continue
             print(f"Group '{dialog.name}' will be muted until: {mute_until}")
             # Check if the group is already muted
             notify_settings = await handle_rate_limit(client, GetNotifySettingsRequest(peer=peer))
