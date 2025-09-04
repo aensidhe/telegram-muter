@@ -5,3 +5,4 @@ typings
 .envrc
 config.toml
 *.pyc
+.vscode

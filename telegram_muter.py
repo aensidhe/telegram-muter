@@ -14,7 +14,7 @@ from pydantic_settings import BaseSettings
 from pydantic import Field, BaseModel, field_validator
 from typing import List, Union, Any, Tuple, Optional
 import pendulum
-from pendulum import Time, WeekDay, Date
+from pendulum import Time, WeekDay, Date, DateTime
 import tomllib
 import re
 
@@ -155,27 +155,26 @@ class Schedule(BaseModel):
         else:
             starting_day = now.date().add(days=1)
 
-        while True:
-            weekday = starting_day.weekday()
-            is_weekend = weekday in [wd.value for wd in self.weekends]
+        while not self._is_working_day(starting_day):
+            starting_day = starting_day.add(days=1)
 
-            # Check if this day is marked as nonworking (highest priority)
-            if self._is_nonworking_date(starting_day):
-                starting_day = starting_day.add(days=1)
-                continue
+        return starting_day
 
-            if is_weekend:
-                # Weekend, but not nonworking - check if it's a working weekend
-                if self._is_working_date(starting_day):
-                    return starting_day
-                else:
-                    starting_day = starting_day.add(days=1)
-                    continue
-            else:
-                # Regular weekday and not nonworking
-                return starting_day
+    def _is_working_day(self, date: Date) -> bool:
+        weekday = date.weekday()
+        # Check if this day is marked as nonworking (highest priority)
+        if self._is_nonworking_weekday(date):
+            return False
 
-    def _is_working_date(self, date: Date) -> bool:
+        is_weekend = weekday in [wd.value for wd in self.weekends]
+        if is_weekend:
+            # Weekend, but not nonworking - check if it's a working weekend
+            return self._is_working_weekend(date)
+        else:
+            # Regular weekday and not nonworking weekday
+            return True
+
+    def _is_working_weekend(self, date: Date) -> bool:
         for item in self.working_weekends:
             if isinstance(item, Date):
                 if date == item:
@@ -186,7 +185,7 @@ class Schedule(BaseModel):
                     return True
         return False
 
-    def _is_nonworking_date(self, date: Date) -> bool:
+    def _is_nonworking_weekday(self, date: Date) -> bool:
         for item in self.nonworking_weekdays:
             if isinstance(item, Date):
                 if date == item:
@@ -196,6 +195,14 @@ class Schedule(BaseModel):
                 if start_date <= date <= end_date:
                     return True
         return False
+
+    """Check if current time is within working hours (between start_of_day and end_of_day)"""
+    def is_working_hours(self, now: DateTime) -> bool:
+        start_of_day = self.start_of_day
+        end_of_day = self.end_of_day
+
+        # Check if current time is between start_of_day and end_of_day
+        return self._is_working_day(now.date()) and start_of_day <= now.time() <= end_of_day
 
 class GroupSetting(BaseModel):
     name: str = Field(default="")
@@ -280,7 +287,7 @@ class ScheduleManager:
         # Convert resolved properties back to strings for Schedule creation
         start_of_day = start_of_day_raw.isoformat() if start_of_day_raw else "09:00:00"
         end_of_day = end_of_day_raw.isoformat() if end_of_day_raw else "19:00:00"
-        
+
         # Convert weekends back to strings
         weekends = []
         if weekends_raw:
@@ -293,7 +300,7 @@ class ScheduleManager:
                     weekends.append(weekday_name_map[wd])
                 else:
                     weekends.append(wd)
-        
+
         # Convert date lists back to string format
         def convert_date_list_to_strings(date_list):
             if not date_list:
@@ -307,10 +314,10 @@ class ScheduleManager:
                 else:
                     result.append(item)
             return result
-        
+
         working_weekends = convert_date_list_to_strings(working_weekends_raw)
         nonworking_weekdays = convert_date_list_to_strings(nonworking_weekdays_raw)
-        
+
         # Create effective schedule with resolved properties
         effective_schedule = Schedule(
             name=f"_effective_{schedule_name}",
@@ -321,7 +328,7 @@ class ScheduleManager:
             working_weekends=working_weekends,
             nonworking_weekdays=nonworking_weekdays
         )
-        
+
         return effective_schedule
 
     def get_schedule_for_group(self, group_name: str) -> Schedule:
@@ -330,12 +337,12 @@ class ScheduleManager:
         for group_setting in self.group_settings:
             if group_setting.name and group_setting.name == group_name:
                 return self.get_effective_schedule(group_setting.schedule)
-        
+
         # Then try pattern match from top to bottom
         for group_setting in self.group_settings:
             if group_setting.name_pattern and re.match(group_setting.name_pattern, group_name):
                 return self.get_effective_schedule(group_setting.schedule)
-        
+
         # Default to 'default' schedule
         return self.get_effective_schedule('default')
 
@@ -348,7 +355,7 @@ class Settings(BaseSettings):
         """Get schedule manager"""
         if not self.schedules:
             raise ValueError("schedules must be defined")
-        
+
         return ScheduleManager(self.schedules, self.group_settings)
 
 def load_settings_from_toml(file_path: str) -> Settings:
@@ -386,10 +393,13 @@ async def get_peer_for_dialog(dialog):
         return InputPeerChannel(dialog.entity.id, dialog.entity.access_hash)
     return None
 
+"""Unmute all chats that are muted until start_of_day next working day"""
 async def unmute_chats():
-    """Unmute all chats that are muted until start_of_day next working day"""
     print("Starting unmute operation...")
-    
+
+    if settings is None:
+        raise RuntimeError("Settings not loaded")
+
     # Connect to the Telegram API
     client = TelegramClient('ru.aensidhe.console_groups_muter', settings.auth.api_id, settings.auth.api_hash)
     await client.connect()
@@ -402,12 +412,10 @@ async def unmute_chats():
         except SessionPasswordNeededError:
             await client.sign_in(settings.auth.phone_number, password=getpass('Enter 2FA password: '))
 
-    # Get default schedule for unmuting calculation  
-    if settings is None:
-        raise RuntimeError("Settings not loaded")
+    # Get default schedule for unmuting calculation
     schedule_manager_instance = settings.get_schedule_manager()
     default_schedule = schedule_manager_instance.get_effective_schedule('default')
-    
+
     # Calculate the target mute_until time (start_of_day next working day)
     timezone_setting = default_schedule.timezone
     if timezone_setting == "auto":
@@ -434,7 +442,7 @@ async def unmute_chats():
     all_dialogs = await handle_rate_limit(client.get_dialogs, limit=None)
 
     unmuted_count = 0
-    
+
     # Iterate through all dialogs and unmute matching chats
     for dialog in all_dialogs:
         peer = await get_peer_for_dialog(dialog)
@@ -442,11 +450,11 @@ async def unmute_chats():
         if peer is not None:
             # Check if the group is muted until the target time
             notify_settings = await handle_rate_limit(client, GetNotifySettingsRequest(peer=peer))
-            
-            if (notify_settings and 
-                notify_settings.mute_until and 
+
+            if (notify_settings and
+                notify_settings.mute_until and
                 notify_settings.mute_until == target_mute_until):
-                
+
                 # Unmute the chat
                 unmute_settings = InputPeerNotifySettings(
                     mute_until=None,
@@ -469,10 +477,13 @@ async def unmute_chats():
     # Disconnect from the Telegram API
     await client.disconnect()
 
-async def mute_chats():
-    """Mute all unmuted chats until start_of_day next working day"""
+"""Mute all unmuted chats until start_of_day next working day"""
+async def mute_chats(finish_the_day: bool = False):
+    # Get appropriate schedule for this group
+    if settings is None:
+        raise RuntimeError("Settings not loaded")
     print("Starting mute operation...")
-    
+
     # Connect to the Telegram API
     client = TelegramClient('ru.aensidhe.console_groups_muter', settings.auth.api_id, settings.auth.api_hash)
     await client.connect()
@@ -492,12 +503,9 @@ async def mute_chats():
 
     # Iterate through all dialogs and mute unmuted groups
     for dialog in all_dialogs:
-        # Get appropriate schedule for this group
-        if settings is None:
-            raise RuntimeError("Settings not loaded")
         schedule_manager_instance = settings.get_schedule_manager()
         group_schedule = schedule_manager_instance.get_schedule_for_group(dialog.name)
-        
+
         # Calculate the mute_until time for this specific group
         timezone_setting = group_schedule.timezone
         if timezone_setting == "auto":
@@ -506,8 +514,13 @@ async def mute_chats():
             tz = pendulum.timezone(timezone_setting)
 
         now = pendulum.now(tz)
+
         next_working_day = group_schedule.get_next_working_day(timezone_setting)
         start_of_day = group_schedule.start_of_day
+
+        if not finish_the_day and group_schedule.is_working_hours(now):
+            print(f"Skipping chat '{dialog.name}': {now} is working hours for this chat according to schedule.")
+            continue
 
         mute_until = pendulum.datetime(
             next_working_day.year,
@@ -518,12 +531,11 @@ async def mute_chats():
             start_of_day.second,
             tz=tz
         )
-        
-        print(f"Group '{dialog.name}' will be muted until: {mute_until}")
-        
+
         peer = await get_peer_for_dialog(dialog)
 
         if peer is not None:
+            print(f"Group '{dialog.name}' will be muted until: {mute_until}")
             # Check if the group is already muted
             notify_settings = await handle_rate_limit(client, GetNotifySettingsRequest(peer=peer))
             is_already_muted = (notify_settings and
@@ -553,39 +565,13 @@ async def mute_chats():
     # Disconnect from the Telegram API
     await client.disconnect()
 
-def is_working_hours() -> bool:
-    """Check if current time is within working hours (between start_of_day and end_of_day)"""
-    if settings is None:
-        return False
-        
-    schedule_manager_instance = settings.get_schedule_manager()
-    default_schedule = schedule_manager_instance.get_effective_schedule('default')
-    
-    timezone_setting = default_schedule.timezone
-    if timezone_setting == "auto":
-        tz = pendulum.local_timezone()
-    else:
-        tz = pendulum.timezone(timezone_setting)
-    
-    now = pendulum.now(tz)
-    current_time = now.time()
-    
-    start_of_day = default_schedule.start_of_day
-    end_of_day = default_schedule.end_of_day
-    
-    # Check if current time is between start_of_day and end_of_day
-    if start_of_day <= current_time <= end_of_day:
-        return True
-    
-    return False
-
 async def main():
     parser = argparse.ArgumentParser(
         description="Telegram Muter - Mute/unmute Telegram chats until next working day"
     )
     parser.add_argument(
-        "command", 
-        choices=["mute", "unmute"], 
+        "command",
+        choices=["mute", "unmute"],
         nargs="?",
         default="mute",
         help="Command to execute (default: mute)"
@@ -595,21 +581,17 @@ async def main():
         action="store_true",
         help="Ignore end_of_day setting and proceed with muting (for mute command only)"
     )
-    
+
     args = parser.parse_args()
-    
+
     if args.command == "mute":
-        # Check working hours only for mute command and only if --finish-the-day is not provided
-        if not args.finish_the_day and is_working_hours():
-            print("It's working hours now, not muting chats")
-            return 0
-        await mute_chats()
+        await mute_chats(finish_the_day=args.finish_the_day)
     elif args.command == "unmute":
         await unmute_chats()
     else:
         print(f"Unknown command: {args.command}")
         return 1
-    
+
     return 0
 
 if __name__ == "__main__":
